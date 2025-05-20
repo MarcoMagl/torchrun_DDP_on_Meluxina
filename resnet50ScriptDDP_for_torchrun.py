@@ -31,12 +31,32 @@ def cleanup():
     dist.destroy_process_group()
 
 
+def get_datasets(download_dir='./data'):
+    transform = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize((0.5,), (0.5,))
+    ])
+
+    # Only rank 0 downloads otherwise I get NCCL errors
+    if dist.get_rank() == 0:
+        print("Rank 0 downloading dataset...")
+        torchvision.datasets.CIFAR100(root=download_dir, train=True, download=True, transform=transform)
+        torchvision.datasets.CIFAR100(root=download_dir, train=False, download=True, transform=transform)
+
+    # all ranks Wait for rank 0 to finish
+    dist.barrier()
+
+    # Now all ranks load
+    train_dataset = torchvision.datasets.CIFAR100(root=download_dir, train=True, download=False, transform=transform)
+    test_dataset = torchvision.datasets.CIFAR100(root=download_dir, train=False, download=False, transform=transform)
+
+    return train_dataset, test_dataset
+
+
 def main(save_every, total_epochs, batch_size, num_workers):
 
     try:
         # first thing to do is setup the distr env
-        # setup(rank, world_size)
-        # world_size, rank, local_rank = ddp_setup_for_torchrun()
 
         dist.init_process_group(backend="nccl")
         local_rank = int(os.environ["LOCAL_RANK"])
@@ -53,12 +73,10 @@ def main(save_every, total_epochs, batch_size, num_workers):
 
         batch_size_total = int(batch_size)
 
-        train_dataset = torchvision.datasets.CIFAR100(root='./data', train=True, download=True, transform=transform)
-        test_dataset = torchvision.datasets.CIFAR100(root='./data', train=False, download=True, transform=transform)
+        train_dataset, test_dataset = get_datasets()
 
         train_sampler = DistributedSampler(train_dataset, num_replicas=world_size, rank=local_rank)
         train_loader = DataLoader(train_dataset, batch_size=batch_size_total, sampler=train_sampler, shuffle=False , num_workers=num_workers, pin_memory=True,)
-        # train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, )
 
         test_sampler = DistributedSampler(test_dataset, num_replicas=world_size, rank=local_rank)
         test_loader = DataLoader(test_dataset, batch_size=batch_size_total, sampler=test_sampler, shuffle=False, num_workers=num_workers, pin_memory=True,)
@@ -236,12 +254,6 @@ def compute_throughput(model, data_loader, rank, world_size):
         print(f"Throughput: {throughput:.2f} images per second (total across {world_size} GPUs)")
 
 
-
-# def run_demo(main_fn, world_size, args):
-#     mp.spawn(main_fn,
-#              args=(world_size,args.save_every, args.total_epochs, args.batch_size, args.num_workers,),
-#              nprocs=world_size,
-#              join=True)
 
 if __name__ == "__main__":
     import argparse
