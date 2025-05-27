@@ -54,6 +54,9 @@ set -x
 
 pkill -f torch.distributed.run
 
+module load jemalloc
+export JEMALLOC_PRELOAD=$(jemalloc-config --libdir)/libjemalloc.so.$(jemalloc-config --revision)
+
 rank=0
 for host in $(scontrol show hostnames "$SLURM_JOB_NODELIST"); do
     echo "Launching rank $rank on $host"
@@ -64,6 +67,7 @@ for host in $(scontrol show hostnames "$SLURM_JOB_NODELIST"); do
         --exclusive \
         --exact \
         --nodelist=$host \
+        LD_PRELOAD=${JEMALLOC_PRELOAD} \
         torchrun \
         --nnodes $SLURM_NNODES \
         --node_rank $rank \
