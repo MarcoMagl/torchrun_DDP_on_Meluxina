@@ -75,7 +75,7 @@ for host in $(scontrol show hostnames "$SLURM_JOB_NODELIST"); do
         --rdzv_backend c10d \
         --rdzv_id $SLURM_JOB_ID \
         --rdzv_endpoint ${MASTER_ADDR}:${MASTER_PORT} \
-        resnet50ScriptDDP_for_torchrun.py 4 1 256 2 &
+        ../resnet50ScriptDDP_for_torchrun.py 4 1 256 2 &
     rank=$((rank + 1))
 done
 
